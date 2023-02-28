@@ -27,20 +27,30 @@ class IWLS:
 
     def fit(self, X, y, max_iter = 100, delta_limit = 0.01, standarize = True, interaction:np.ndarray = None):
 
-        was_array = isinstance(X, np.ndarray)
-        if was_array:
-            X = pd.DataFrame(X)
-        colnames = X.columns.tolist()
+        X = X.copy()
 
-        if isinstance(y, np.ndarray):
-            y = pd.DataFrame({"y": y})
+        if interaction is not None:
+          for row in interaction_matrix:
+            first_col = row[0]
+            second_col = row[1]
+            X[first_col] = X[first_col] * X[second_col]
+            X.rename(columns={first_col: first_col + "*" + second_col}, inplace=True)
+            X.drop(columns=[second_col], inplace = True)
+
+        was_df = isinstance(X, pd.DataFrame)
+        if was_df:
+            colnames = X.columns.tolist()
+            X = X.to_numpy()
+
+        if isinstance(y, pd.DataFrame):
+            y = y.to_numpy()
 
         if(standarize):
             X = (X - np.mean(X, axis=0)) / np.std(X,axis=0)
 
         if(self.beta is None):
-            beta = X.iloc[0].copy(deep = True) * 0
-            p = logit_inv(X @ beta)
+            beta = np.zeros(X.shape[1])
+            p = self.logit_inv(X @ beta)
             iteration = 0
 
         delta = 10000
@@ -50,8 +60,7 @@ class IWLS:
             W = np.diag(p * (1-p))
             z = X @ beta + inv(W) @ (y - p)
             beta = inv(X.T @ W @ X) @ X.T @ W @ z
-            beta = pd.DataFrame({"coeff" : beta.values}, index=colnames)
-            p = logit_inv(np.array(X @ beta))
+            p = self.logit_inv(X @ beta)
 
             self.log_likelihood_path.append(self.Log_likelihood(p,y))
             delta = np.abs(self.log_likelihood_path[iteration] - self.log_likelihood_path[iteration - 1])
@@ -59,7 +68,7 @@ class IWLS:
         self.iterations = iteration
         self.log_likelihood = self.log_likelihood_path[iteration]
 
-        if not was_array:
+        if was_df:
             self.beta = pd.DataFrame({"coeff" : beta}, index=colnames)
         else:
             self.beta = beta
@@ -70,12 +79,17 @@ class IWLS:
         # Log-likelihood of logistic regression
         L = y * np.log(p) + (1 - y) * np.log(1 - p)
         return sum(L)
+      
+    @staticmethod
+    def logit_inv(x):
+        return 1/(1+np.exp(-x))
+    
 
 ```
 
 ```{python}
 
-data = '../AML/data/airquality.csv'
+data = '/home/bartoszrozek/Documents/Studia/AML/data/airquality.csv'
 
 df = pd.read_csv(data)
 
@@ -88,10 +102,32 @@ y = df['Ozone'].reset_index(drop=True)
 ```{python}
 
 interaction_matrix = np.array([['Solar.R', 'Wind'], ['Temp', 'Day']])
-for row in interaction_matrix:
-  first_col = row[0]
-  second_col = row[1]
-  X[first_col] = X[first_col] * X[second_col]
-  X.rename(columns={first_col: first_col + "*" + second_col}, inplace=True)
-  X.drop(columns=[second_col], inplace = True)
+iwls = IWLS()
+
+iwls.fit(X, y, standarize=False)
+
+iwls.beta
+
+```
+
+```{python}
+
+
+
+```
+
+```{r}
+
+data <- '/home/bartoszrozek/Documents/Studia/AML/data/airquality.csv'
+
+df <- read.csv(data)
+
+X <- df[,-1] %>% as.matrix()
+
+y <- df[,1]
+
+library(foehnix)
+
+iwls_logit(X, y, standardize = FALSE)
+
 ```
